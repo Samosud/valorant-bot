@@ -1,7 +1,14 @@
 import asyncio
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import (
+    Message,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    CallbackQuery
+)
 from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -15,6 +22,8 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 queue = []
+matches = {}  # хранит пары
+accepted = {}  # кто нажал "принять"
 
 
 # ---------- МЕНЮ ----------
@@ -57,34 +66,33 @@ async def register_start(message: Message, state: FSMContext):
 
 
 @dp.message(Register.nickname)
-async def get_nickname(message: Message, state: FSMContext):
+async def step1(message: Message, state: FSMContext):
     await state.update_data(nickname=message.text)
     await message.answer("Введите ранг:")
     await state.set_state(Register.rank)
 
 
 @dp.message(Register.rank)
-async def get_rank(message: Message, state: FSMContext):
+async def step2(message: Message, state: FSMContext):
     await state.update_data(rank=message.text)
     await message.answer("Введите сервер:")
     await state.set_state(Register.server)
 
 
 @dp.message(Register.server)
-async def get_server(message: Message, state: FSMContext):
+async def step3(message: Message, state: FSMContext):
     await state.update_data(server=message.text)
     await message.answer("Введите агентов:")
     await state.set_state(Register.agents)
 
 
 @dp.message(Register.agents)
-async def get_agents(message: Message, state: FSMContext):
+async def step4(message: Message, state: FSMContext):
     await state.update_data(agents=message.text)
     data = await state.get_data()
 
     await add_user(
         message.from_user.id,
-        message.from_user.username,
         data["nickname"],
         data["rank"],
         data["server"],
@@ -105,17 +113,9 @@ async def profile(message: Message):
         await message.answer("❌ Нет анкеты")
         return
 
-    username, nickname, rank, server, agents = user
-
-    link = f"https://t.me/{username}" if username else "❌ нет username"
-
     await message.answer(
         f"👤 Профиль:\n\n"
-        f"🎮 Ник: {nickname}\n"
-        f"🏆 Ранг: {rank}\n"
-        f"🌍 Сервер: {server}\n"
-        f"🧠 Агенты: {agents}\n"
-        f"📩 Связь: {link}"
+        f"🎮 {user[0]}\n🏆 {user[1]}\n🌍 {user[2]}\n🧠 {user[3]}"
     )
 
 
@@ -149,60 +149,83 @@ async def find(message: Message):
     users = await get_online_users()
 
     if not users:
-        await message.answer("❌ Никого нет онлайн")
+        await message.answer("❌ Никого нет")
         return
 
-    text = "🎯 Игроки онлайн:\n\n"
-
-    for user in users:
-        text += f"{user[0]} | {user[1]} | {user[2]}\n"
+    text = "🎯 Онлайн:\n\n"
+    for u in users:
+        text += f"{u[0]} | {u[1]} | {u[2]}\n"
 
     await message.answer(text)
 
 
 # ---------- БЫСТРЫЙ ПОИСК ----------
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-
 @dp.message(F.text == "⚡ Быстрый поиск")
 async def quick_search(message: Message):
-    user_id = message.from_user.id
+    uid = message.from_user.id
 
-    if user_id in queue:
+    if uid in queue:
         await message.answer("⏳ Уже ищем")
         return
 
-    queue.append(user_id)
-    await message.answer("🔍 Поиск тиммейта...")
+    queue.append(uid)
+    await message.answer("🔍 Поиск...")
 
     if len(queue) >= 2:
         u1 = queue.pop(0)
         u2 = queue.pop(0)
 
-        user1 = await get_user(u1)
-        user2 = await get_user(u2)
+        matches[u1] = u2
+        matches[u2] = u1
 
-        username1 = user1[0] if user1 else None
-        username2 = user2[0] if user2 else None
-
-        # кнопки
-        kb1 = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="💬 Написать",
-                url=f"https://t.me/{username2}" if username2 else "https://t.me"
-            )]
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Принять", callback_data="accept"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data="decline")
+            ]
         ])
 
-        kb2 = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="💬 Написать",
-                url=f"https://t.me/{username1}" if username1 else "https://t.me"
-            )]
-        ])
+        await bot.send_message(u1, "🎯 Найден тиммейт!", reply_markup=kb)
+        await bot.send_message(u2, "🎯 Найден тиммейт!", reply_markup=kb)
 
-        await bot.send_message(u1, "🎉 Тиммейт найден!", reply_markup=kb1)
-        await bot.send_message(u2, "🎉 Тиммейт найден!", reply_markup=kb2)
+
+# ---------- ОБРАБОТКА КНОПОК ----------
+
+@dp.callback_query(F.data == "accept")
+async def accept(call: CallbackQuery):
+    user = call.from_user.id
+    partner = matches.get(user)
+
+    if not partner:
+        return
+
+    accepted[user] = True
+
+    if accepted.get(partner):
+        await bot.send_message(user, f"🎉 Матч! Напиши ему: tg://user?id={partner}")
+        await bot.send_message(partner, f"🎉 Матч! Напиши ему: tg://user?id={user}")
+
+        matches.pop(user, None)
+        matches.pop(partner, None)
+        accepted.pop(user, None)
+        accepted.pop(partner, None)
+    else:
+        await call.message.answer("⏳ Ждём второго игрока...")
+
+
+@dp.callback_query(F.data == "decline")
+async def decline(call: CallbackQuery):
+    user = call.from_user.id
+    partner = matches.get(user)
+
+    if partner:
+        await bot.send_message(partner, "❌ Игрок отказался")
+
+    matches.pop(user, None)
+    accepted.pop(user, None)
+
+    await call.message.answer("❌ Ты отказался")
 
 
 # ---------- ЗАПУСК ----------
