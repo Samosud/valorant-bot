@@ -14,11 +14,10 @@ TOKEN = "8811805904:AAHdxtHRwTZX3jfWm8oiiFhxT_SGADpozNo"
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# очередь поиска
 queue = []
 
 
-# ---------- КНОПКИ ----------
+# ---------- МЕНЮ ----------
 
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
@@ -85,6 +84,7 @@ async def get_agents(message: Message, state: FSMContext):
 
     await add_user(
         message.from_user.id,
+        message.from_user.username,
         data["nickname"],
         data["rank"],
         data["server"],
@@ -105,12 +105,17 @@ async def profile(message: Message):
         await message.answer("❌ Нет анкеты")
         return
 
+    username, nickname, rank, server, agents = user
+
+    link = f"https://t.me/{username}" if username else "❌ нет username"
+
     await message.answer(
         f"👤 Профиль:\n\n"
-        f"🎮 Ник: {user[0]}\n"
-        f"🏆 Ранг: {user[1]}\n"
-        f"🌍 Сервер: {user[2]}\n"
-        f"🧠 Агенты: {user[3]}"
+        f"🎮 Ник: {nickname}\n"
+        f"🏆 Ранг: {rank}\n"
+        f"🌍 Сервер: {server}\n"
+        f"🧠 Агенты: {agents}\n"
+        f"📩 Связь: {link}"
     )
 
 
@@ -137,7 +142,7 @@ async def offline(message: Message):
     await message.answer("🔴 Ты оффлайн")
 
 
-# ---------- ПОИСК ----------
+# ---------- СПИСОК ----------
 
 @dp.message(F.text == "🎯 Найти тиммейтов")
 async def find(message: Message):
@@ -147,12 +152,10 @@ async def find(message: Message):
         await message.answer("❌ Никого нет онлайн")
         return
 
-    text = "🎯 Игроки:\n\n"
+    text = "🎯 Игроки онлайн:\n\n"
 
     for user in users:
-        text += (
-            f"{user[0]} | {user[1]} | {user[2]}\n"
-        )
+        text += f"{user[0]} | {user[1]} | {user[2]}\n"
 
     await message.answer(text)
 
@@ -168,14 +171,20 @@ async def quick_search(message: Message):
         return
 
     queue.append(user_id)
-    await message.answer("🔍 Поиск...")
+    await message.answer("🔍 Поиск тиммейта...")
 
     if len(queue) >= 2:
         u1 = queue.pop(0)
         u2 = queue.pop(0)
 
-        await bot.send_message(u1, "🎉 Нашёл тиммейта!")
-        await bot.send_message(u2, "🎉 Нашёл тиммейта!")
+        user1 = await get_user(u1)
+        user2 = await get_user(u2)
+
+        link1 = f"https://t.me/{user1[0]}" if user1 and user1[0] else "❌ нет username"
+        link2 = f"https://t.me/{user2[0]}" if user2 and user2[0] else "❌ нет username"
+
+        await bot.send_message(u1, f"🎉 Тиммейт найден!\n👉 Написать: {link2}")
+        await bot.send_message(u2, f"🎉 Тиммейт найден!\n👉 Написать: {link1}")
 
 
 # ---------- ЗАПУСК ----------
