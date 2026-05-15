@@ -162,6 +162,9 @@ async def find(message: Message):
 
 # ---------- БЫСТРЫЙ ПОИСК ----------
 
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+
 @dp.message(F.text == "⚡ Быстрый поиск")
 async def quick_search(message: Message):
     user_id = message.from_user.id
@@ -180,11 +183,26 @@ async def quick_search(message: Message):
         user1 = await get_user(u1)
         user2 = await get_user(u2)
 
-        link1 = f"https://t.me/{user1[0]}" if user1 and user1[0] else "❌ нет username"
-        link2 = f"https://t.me/{user2[0]}" if user2 and user2[0] else "❌ нет username"
+        username1 = user1[0] if user1 else None
+        username2 = user2[0] if user2 else None
 
-        await bot.send_message(u1, f"🎉 Тиммейт найден!\n👉 Написать: {link2}")
-        await bot.send_message(u2, f"🎉 Тиммейт найден!\n👉 Написать: {link1}")
+        # кнопки
+        kb1 = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="💬 Написать",
+                url=f"https://t.me/{username2}" if username2 else "https://t.me"
+            )]
+        ])
+
+        kb2 = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="💬 Написать",
+                url=f"https://t.me/{username1}" if username1 else "https://t.me"
+            )]
+        ])
+
+        await bot.send_message(u1, "🎉 Тиммейт найден!", reply_markup=kb1)
+        await bot.send_message(u2, "🎉 Тиммейт найден!", reply_markup=kb2)
 
 
 # ---------- ЗАПУСК ----------
