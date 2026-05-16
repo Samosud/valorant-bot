@@ -22,7 +22,7 @@ from database import *
 
 # ---------- НАСТРОЙКИ ----------
 
-TOKEN = "8811805904:AAHdxtHRwTZX3jfWm8oiiFhxT_SGADpozNo"
+TOKEN = "8811805904:AAH96u6i1ak0Ms3hJm4UHaa2h6E67n7H0aw"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
