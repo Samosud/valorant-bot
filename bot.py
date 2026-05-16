@@ -1,5 +1,8 @@
 import asyncio
 import os
+import threading
+
+from flask import Flask
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
@@ -17,7 +20,10 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from database import *
 
+# ---------- НАСТРОЙКИ ----------
+
 TOKEN = "8811805904:AAHdxtHRwTZX3jfWm8oiiFhxT_SGADpozNo"
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
@@ -26,6 +32,18 @@ pool = None
 queue = []
 matches = {}
 accepted = {}
+
+# ---------- WEB (для Render) ----------
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
 
 
 # ---------- МЕНЮ ----------
@@ -125,14 +143,6 @@ async def profile(message: Message):
     )
 
 
-# ---------- РЕДАКТИРОВАНИЕ ----------
-
-@dp.message(F.text == "✏️ Изменить анкету")
-async def edit(message: Message, state: FSMContext):
-    await message.answer("Заполни заново:")
-    await state.set_state(Register.nickname)
-
-
 # ---------- ОНЛАЙН ----------
 
 @dp.message(F.text == "🟢 Я онлайн")
@@ -164,7 +174,7 @@ async def find(message: Message):
     await message.answer(text)
 
 
-# ---------- БЫСТРЫЙ ПОИСК ----------
+# ---------- ПОИСК ----------
 
 @dp.message(F.text == "⚡ Быстрый поиск")
 async def quick_search(message: Message):
@@ -237,8 +247,13 @@ async def decline(call: CallbackQuery):
 
 async def main():
     global pool
+
+    # веб (для Render)
+    threading.Thread(target=run_web).start()
+
     pool = await create_pool()
     await create_table(pool)
+
     await dp.start_polling(bot)
 
 
