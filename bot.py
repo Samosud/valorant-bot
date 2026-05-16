@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
@@ -17,13 +18,14 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from database import *
 
 TOKEN = "8811805904:AAHdxtHRwTZX3jfWm8oiiFhxT_SGADpozNo"
-
 bot = Bot(token=TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+pool = None
+
 queue = []
-matches = {}  # хранит пары
-accepted = {}  # кто нажал "принять"
+matches = {}
+accepted = {}
 
 
 # ---------- МЕНЮ ----------
@@ -92,6 +94,7 @@ async def step4(message: Message, state: FSMContext):
     data = await state.get_data()
 
     await add_user(
+        pool,
         message.from_user.id,
         data["nickname"],
         data["rank"],
@@ -107,7 +110,7 @@ async def step4(message: Message, state: FSMContext):
 
 @dp.message(F.text == "👤 Профиль")
 async def profile(message: Message):
-    user = await get_user(message.from_user.id)
+    user = await get_user(pool, message.from_user.id)
 
     if not user:
         await message.answer("❌ Нет анкеты")
@@ -115,7 +118,10 @@ async def profile(message: Message):
 
     await message.answer(
         f"👤 Профиль:\n\n"
-        f"🎮 {user[0]}\n🏆 {user[1]}\n🌍 {user[2]}\n🧠 {user[3]}"
+        f"🎮 {user['nickname']}\n"
+        f"🏆 {user['rank']}\n"
+        f"🌍 {user['server']}\n"
+        f"🧠 {user['agents']}"
     )
 
 
@@ -123,7 +129,6 @@ async def profile(message: Message):
 
 @dp.message(F.text == "✏️ Изменить анкету")
 async def edit(message: Message, state: FSMContext):
-    await delete_user(message.from_user.id)
     await message.answer("Заполни заново:")
     await state.set_state(Register.nickname)
 
@@ -132,13 +137,13 @@ async def edit(message: Message, state: FSMContext):
 
 @dp.message(F.text == "🟢 Я онлайн")
 async def online(message: Message):
-    await set_online(message.from_user.id, 1)
+    await set_online(pool, message.from_user.id, True)
     await message.answer("🟢 Ты онлайн")
 
 
 @dp.message(F.text == "🔴 Я оффлайн")
 async def offline(message: Message):
-    await set_online(message.from_user.id, 0)
+    await set_online(pool, message.from_user.id, False)
     await message.answer("🔴 Ты оффлайн")
 
 
@@ -146,7 +151,7 @@ async def offline(message: Message):
 
 @dp.message(F.text == "🎯 Найти тиммейтов")
 async def find(message: Message):
-    users = await get_online_users()
+    users = await get_online_users(pool)
 
     if not users:
         await message.answer("❌ Никого нет")
@@ -154,7 +159,7 @@ async def find(message: Message):
 
     text = "🎯 Онлайн:\n\n"
     for u in users:
-        text += f"{u[0]} | {u[1]} | {u[2]}\n"
+        text += f"{u['nickname']} | {u['rank']} | {u['server']}\n"
 
     await message.answer(text)
 
@@ -190,7 +195,7 @@ async def quick_search(message: Message):
         await bot.send_message(u2, "🎯 Найден тиммейт!", reply_markup=kb)
 
 
-# ---------- ОБРАБОТКА КНОПОК ----------
+# ---------- КНОПКИ ----------
 
 @dp.callback_query(F.data == "accept")
 async def accept(call: CallbackQuery):
@@ -203,8 +208,8 @@ async def accept(call: CallbackQuery):
     accepted[user] = True
 
     if accepted.get(partner):
-        await bot.send_message(user, f"🎉 Матч! Напиши ему: tg://user?id={partner}")
-        await bot.send_message(partner, f"🎉 Матч! Напиши ему: tg://user?id={user}")
+        await bot.send_message(user, f"🎉 Матч! Написать: tg://user?id={partner}")
+        await bot.send_message(partner, f"🎉 Матч! Написать: tg://user?id={user}")
 
         matches.pop(user, None)
         matches.pop(partner, None)
@@ -231,7 +236,9 @@ async def decline(call: CallbackQuery):
 # ---------- ЗАПУСК ----------
 
 async def main():
-    await create_table()
+    global pool
+    pool = await create_pool()
+    await create_table(pool)
     await dp.start_polling(bot)
 
 
