@@ -35,7 +35,7 @@ def run_web():
 
 # ---------- ДАННЫЕ ----------
 
-RANKS = [
+RANKS = ["Неважно"] + [
     "🪨 Железо 1","🪨 Железо 2","🪨 Железо 3",
     "🥉 Бронза 1","🥉 Бронза 2","🥉 Бронза 3",
     "🥈 Серебро 1","🥈 Серебро 2","🥈 Серебро 3",
@@ -47,10 +47,7 @@ RANKS = [
     "🌟 Radiant"
 ]
 
-SERVERS = [
-    "Франкфурт","Париж","Лондон","Мадрид",
-    "Стокгольм","Варшава","Стамбул"
-]
+SERVERS = ["Неважно","Франкфурт","Париж","Лондон","Мадрид","Стокгольм","Варшава","Стамбул"]
 
 AGENTS = [
     "Jett","Phoenix","Raze","Reyna","Yoru","Neon","Iso","Waylay",
@@ -85,11 +82,16 @@ class Register(StatesGroup):
     server = State()
     agents = State()
 
+class Search(StatesGroup):
+    rank = State()
+    server = State()
+    agent = State()
+
 # ---------- START ----------
 
 @dp.message(Command("start"))
 async def start(message: Message):
-    await message.answer("🎮 Добро пожаловать", reply_markup=main_menu)
+    await message.answer("🎮 Меню", reply_markup=main_menu)
 
 # ---------- РЕГИСТРАЦИЯ ----------
 
@@ -101,24 +103,33 @@ async def reg(message: Message, state: FSMContext):
 @dp.message(Register.nickname)
 async def reg2(message: Message, state: FSMContext):
     await state.update_data(nickname=message.text)
-    await message.answer("Выбери ранг:", reply_markup=kb_list(RANKS))
+    await message.answer("Выбери ранг:", reply_markup=kb_list(RANKS[1:]))
     await state.set_state(Register.rank)
 
 @dp.message(Register.rank)
 async def reg3(message: Message, state: FSMContext):
+    if message.text == "⬅️ Назад":
+        await reg(message, state)
+        return
+
     await state.update_data(rank=message.text)
-    await message.answer("Выбери сервер:", reply_markup=kb_list(SERVERS))
+    await message.answer("Выбери сервер:", reply_markup=kb_list(SERVERS[1:]))
     await state.set_state(Register.server)
 
 @dp.message(Register.server)
 async def reg4(message: Message, state: FSMContext):
+    if message.text == "⬅️ Назад":
+        await message.answer("Выбери ранг:", reply_markup=kb_list(RANKS[1:]))
+        await state.set_state(Register.rank)
+        return
+
     await state.update_data(server=message.text)
     await state.update_data(agents=[])
 
     await show_agents(message, state)
     await state.set_state(Register.agents)
 
-# ---------- INLINE АГЕНТЫ (ФИКС) ----------
+# ---------- INLINE АГЕНТЫ ----------
 
 async def show_agents(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -156,7 +167,6 @@ async def select_agent(call: CallbackQuery, state: FSMContext):
     await state.update_data(agents=selected)
 
     keyboard = []
-
     for a in AGENTS:
         text = f"☑️ {a}" if a in selected else a
         keyboard.append([InlineKeyboardButton(text=text, callback_data=f"agent_{a}")])
@@ -198,7 +208,7 @@ async def done_agents(call: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "back")
 async def back_inline(call: CallbackQuery, state: FSMContext):
     await call.message.delete()
-    await call.message.answer("Выбери сервер:", reply_markup=kb_list(SERVERS))
+    await call.message.answer("Выбери сервер:", reply_markup=kb_list(SERVERS[1:]))
     await state.set_state(Register.server)
     await call.answer()
 
@@ -211,11 +221,11 @@ async def back(message: Message, state: FSMContext):
         await state.set_state(Register.nickname)
 
     elif current == Register.server:
-        await message.answer("Выбери ранг:", reply_markup=kb_list(RANKS))
+        await message.answer("Выбери ранг:", reply_markup=kb_list(RANKS[1:]))
         await state.set_state(Register.rank)
 
     elif current == Register.agents:
-        await message.answer("Выбери сервер:", reply_markup=kb_list(SERVERS))
+        await message.answer("Выбери сервер:", reply_markup=kb_list(SERVERS[1:]))
         await state.set_state(Register.server)
 
     else:
@@ -247,6 +257,60 @@ async def online(message: Message):
 async def offline(message: Message):
     await set_online(pool, message.from_user.id, False)
     await message.answer("🔴 Ты оффлайн")
+
+# ---------- ПОИСК ----------
+
+@dp.message(F.text == "🔍 Поиск")
+async def search_start(message: Message, state: FSMContext):
+    await message.answer("Выбери ранг:", reply_markup=kb_list(RANKS))
+    await state.set_state(Search.rank)
+
+@dp.message(Search.rank)
+async def search_rank(message: Message, state: FSMContext):
+    await state.update_data(rank=message.text)
+    await message.answer("Выбери сервер:", reply_markup=kb_list(SERVERS))
+    await state.set_state(Search.server)
+
+@dp.message(Search.server)
+async def search_server(message: Message, state: FSMContext):
+    await state.update_data(server=message.text)
+    await message.answer("Выбери агента:", reply_markup=kb_list(["Неважно"] + AGENTS))
+    await state.set_state(Search.agent)
+
+@dp.message(Search.agent)
+async def search_agent(message: Message, state: FSMContext):
+    data = await state.get_data()
+
+    users = await get_online_users(pool)
+
+    found = False
+
+    for u in users:
+        if data["rank"] != "Неважно" and u["rank"] != data["rank"]:
+            continue
+        if data["server"] != "Неважно" and u["server"] != data["server"]:
+            continue
+        if message.text != "Неважно" and message.text not in u["agents"]:
+            continue
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="✉️ Написать",
+                url=f"tg://user?id={u['telegram_id']}"
+            )]
+        ])
+
+        await message.answer(
+            f"{u['nickname']}\n{u['rank']}\n{u['server']}\n{u['agents']}",
+            reply_markup=kb
+        )
+
+        found = True
+
+    if not found:
+        await message.answer("❌ Никого не найдено")
+
+    await state.clear()
 
 # ---------- ЗАПУСК ----------
 
