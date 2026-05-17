@@ -115,11 +115,10 @@ async def reg4(message: Message, state: FSMContext):
     await state.update_data(server=message.text)
     await state.update_data(agents=[])
 
-    await message.answer("Выбери 3 агента:")
     await show_agents(message, state)
     await state.set_state(Register.agents)
 
-# ---------- INLINE АГЕНТЫ ----------
+# ---------- INLINE АГЕНТЫ (ФИКС) ----------
 
 async def show_agents(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -127,9 +126,9 @@ async def show_agents(message: Message, state: FSMContext):
 
     keyboard = []
 
-    for agent in AGENTS:
-        text = f"☑️ {agent}" if agent in selected else agent
-        keyboard.append([InlineKeyboardButton(text=text, callback_data=f"agent_{agent}")])
+    for a in AGENTS:
+        text = f"☑️ {a}" if a in selected else a
+        keyboard.append([InlineKeyboardButton(text=text, callback_data=f"agent_{a}")])
 
     keyboard.append([InlineKeyboardButton(text="✅ Готово", callback_data="done_agents")])
     keyboard.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back")])
@@ -156,8 +155,20 @@ async def select_agent(call: CallbackQuery, state: FSMContext):
 
     await state.update_data(agents=selected)
 
-    await call.message.delete()
-    await show_agents(call.message, state)
+    keyboard = []
+
+    for a in AGENTS:
+        text = f"☑️ {a}" if a in selected else a
+        keyboard.append([InlineKeyboardButton(text=text, callback_data=f"agent_{a}")])
+
+    keyboard.append([InlineKeyboardButton(text="✅ Готово", callback_data="done_agents")])
+    keyboard.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back")])
+
+    await call.message.edit_text(
+        f"Выбрано: {len(selected)}/3",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    )
+
     await call.answer()
 
 @dp.callback_query(F.data == "done_agents")
